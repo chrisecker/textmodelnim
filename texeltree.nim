@@ -1,25 +1,45 @@
+import options
+import strutils
 
+
+  
 const
   NMAX = 15
 
-type EmptyType = enum nothing
-type StringOrNothing = string or EmptyType
-type IntOrNothing = int or EmptyType
+### Styles
+type
+  Style = ref object
+    fontsize: Option[int]
+    textcolor: Option[string]
           
-type Style* = ref object
-  fontsize: int #IntOrNothing #or EmptyType
+proc `or`[T](self: Option[T], other: Option[T]): Option[T] =
+  if self.isNone:
+    return other
+  return self
+
+proc `or`(x: Style, y: Style): Style =
+    result = Style()
+    # copy
+    for name, v, r in fieldPairs(x[], result[]):
+      r = r or v
+    # fill      
+    for name, v, r in fieldPairs(y[], result[]):
+      r = r or v
+    return result
+    
+proc `$`(x: Style): string =
+  var l = newSeq[string](0)
+  if not x.fontsize.isNone:
+    l.add("fontsize: " & $x.fontsize.get())
+  if not x.textcolor.isNone:
+    l.add("textcolor: " & $x.textcolor.get())
+  return "Style("&l.join(", ")&")" 
+
+let EMPTY_STYLE = Style()
+let DEFAULT_STYLE = Style(fontsize: option(12), textcolor: option("black"))
 
 
-type StyleOrNothing = Style or EmptyType
-  
-#const
-#var EMPTYSTYLE: Style
-
-let
-  EMPTYSTYLE : Style = nil # = Style(fontsize: 12) #nothing)
-
-
-  
+### Texel  
 type Texel* = ref object of RootObj
 method get_depth(this: Texel): int = 0
 method get_length(this: Texel): int = 0
@@ -32,11 +52,11 @@ type Single* = ref object of Texel
   style*: Style
   text*: string  
 method get_length(this: Single): int = 1
-method copy(this: Single, style: StyleOrNothing = nothing): Single =
+method copy(this: Single, style: Option[Style]): Single =
   var new: Single
   shallowCopy(new, this)
-  if style is Style:
-    new.style = style
+  if not style.isNone:
+    new.style = style.get()
   return new
   
 
@@ -44,14 +64,14 @@ type Text* = ref object of Texel
   style*: Style
   text*: string
 method get_length(this: Text): int = this.text.len
-method copy(this: Text, style: StyleOrNothing = nothing,
-            text: StringOrNothing = nothing): Text =
+method copy(this: Text, style: Option[Style],
+            text: Option[string]): Text =
   var new: Text
   shallowCopy(new, this)
-  if style is Style: 
-    new.style = style
-  if text is string:
-    new.text = text
+  if not style.isNone:
+    new.style = style.get()
+  if not text.isNone:
+    new.text = text.get()
   return new
   
 
@@ -79,12 +99,11 @@ proc init(texel: Container) =
   texel.length = sum_length(texel.childs)
   texel.lineno = sum_lineno(texel.childs)
   
-type TexelsOrNone = seq[Texel] or EmptyType  
-method copy(this: Container, childs: TexelsOrNone): Container =
+method copy(this: Container, childs: Option[seq[Texel]]): Container =
   var new: Container
   shallowCopy(new, this)
-  if not childs is EmptyType:
-    new.childs = childs # copy ???
+  if not childs.isNone:
+    new.childs = childs.get() # XXX copy
   new.init()
   return new
   
