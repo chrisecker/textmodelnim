@@ -1,60 +1,28 @@
 import options
-import strutils
-
+import styles
 
   
 const
   NMAX = 15
 
-### Styles
-type
-  Style = ref object
-    fontsize: Option[int]
-    textcolor: Option[string]
-          
-proc `or`[T](self: Option[T], other: Option[T]): Option[T] =
-  if self.isNone:
-    return other
-  return self
-
-proc `or`(x: Style, y: Style): Style =
-    result = Style()
-    # copy
-    for name, v, r in fieldPairs(x[], result[]):
-      r = r or v
-    # fill      
-    for name, v, r in fieldPairs(y[], result[]):
-      r = r or v
-    return result
-    
-proc `$`(x: Style): string =
-  var l = newSeq[string](0)
-  if not x.fontsize.isNone:
-    l.add("fontsize: " & $x.fontsize.get())
-  if not x.textcolor.isNone:
-    l.add("textcolor: " & $x.textcolor.get())
-  return "Style("&l.join(", ")&")" 
-
-let EMPTY_STYLE = Style()
-let DEFAULT_STYLE = Style(fontsize: option(12), textcolor: option("black"))
-
-
-### Texel  
 type Texel* = ref object of RootObj
-method get_depth(this: Texel): int = 0
-method get_length(this: Texel): int = 0
-method get_lineno(this: Texel): int = 0
+method get_depth*(this: Texel): int {.base.} = 0
+method get_length*(this: Texel): int {.base.} = 0
+method get_lineno*(this: Texel): int {.base.} = 0
+proc copy*(this: Texel): Texel =
+  var new: Texel
+  deepCopy(new, this)
+  return new
 
-var NONECHILDS: seq[int]
 
 
 type Single* = ref object of Texel
   style*: Style
-  text*: string  
+  text*: string # XXX Sollte immutable sein!
 method get_length(this: Single): int = 1
-method copy(this: Single, style: Option[Style]): Single =
+proc copy*(this: Single, style: Option[Style]): Single =
   var new: Single
-  shallowCopy(new, this)
+  deepCopy(new, this)
   if not style.isNone:
     new.style = style.get()
   return new
@@ -62,12 +30,12 @@ method copy(this: Single, style: Option[Style]): Single =
 
 type Text* = ref object of Texel
   style*: Style
-  text*: string
+  text*: string # XXX Sollte immutable sein!
 method get_length(this: Text): int = this.text.len
-method copy(this: Text, style: Option[Style],
-            text: Option[string]): Text =
+proc copy*(this: Text, style: Option[Style],
+           text: Option[string]): Text =
   var new: Text
-  shallowCopy(new, this)
+  deepCopy(new, this)
   if not style.isNone:
     new.style = style.get()
   if not text.isNone:
@@ -95,22 +63,22 @@ proc sum_lineno(l: seq[Texel]): int =
 
 
 type Container = ref object of TexelWithChilds
-proc init(texel: Container) =
+proc init*(texel: Container) =
   texel.length = sum_length(texel.childs)
   texel.lineno = sum_lineno(texel.childs)
   
-method copy(this: Container, childs: Option[seq[Texel]]): Container =
+proc copy*(this: Container, childs: Option[seq[Texel]]): Container =
   var new: Container
-  shallowCopy(new, this)
+  deepCopy(new, this)
   if not childs.isNone:
-    new.childs = childs.get() # XXX copy
+    deepCopy(new.childs, childs.get())
   new.init()
   return new
   
   
-type Group = ref object of TexelWithChilds
+type Group* = ref object of TexelWithChilds
   depth: int
-proc newGroup(childs: seq[Texel]) : Group =
+proc newGroup*(childs: seq[Texel]) : Group =
   var texel: Group 
   texel = Group()
   texel.childs = childs
@@ -126,15 +94,15 @@ proc newGroup(childs: seq[Texel]) : Group =
 
 type NewLine* = ref object of Single
   parstyle: Style
-method get_lineno(this: NewLine): int = 1
+method get_lineno*(this: NewLine): int = 1
 
   
-let TAB = Single(text: "\t", style: EMPTYSTYLE)
-let SPACE = Single(text: " ", style: EMPTYSTYLE)
-let NL = NewLine(text: "\n", style: EMPTYSTYLE)
+let TAB* = Single(text: "\t", style: EMPTYSTYLE)
+let SPACE* = Single(text: " ", style: EMPTYSTYLE)
+let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
   
   
-proc groups(l: seq[Texel]) : seq[Group]=
+proc groups*(l: seq[Texel]) : seq[Group]=
   #"""Transform the list of texels *l* into a list of groups.
   const
     NMAXH = int(0.5*NMAX)
@@ -159,4 +127,12 @@ proc groups(l: seq[Texel]) : seq[Group]=
     r.add(newGroup(l[i+n..NMAX-1]))
   return r
 
+when isMainModule:
+  import unittest  
+  suite "testing texeltree.nim":
+    #echo "suite setup: run once before the tests"
+
+    test "essential truths":
+      # give up and stop if this fails
+      require(true)
 
