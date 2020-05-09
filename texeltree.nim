@@ -22,6 +22,7 @@ type Group* = ref object of TexelWithChilds
   depth: int
 type NewLine* = ref object of Single
   parstyle: Style
+type Tabulator* = ref object of Single
 
   
 method get_depth*(this: Texel): int {.base.} = 0
@@ -44,6 +45,8 @@ method `$`*(this: Group): string =
   for child in this.childs:
     l.add($child)
   "G[" & l.join(", ") & "]"
+method `$`*(this: NewLine): string = "NL"
+method `$`*(this: Tabulator): string = "TAB"
   
 proc copy*(this: Texel): Texel =
   var new: Texel
@@ -105,9 +108,9 @@ proc newGroup*(childs: seq[Texel]) : Group =
   return texel
   
   
-let TAB* = Single(text: "\t", style: EMPTYSTYLE)
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
+let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
   
   
 proc groups*(l: seq[Texel]) : seq[Group]=
