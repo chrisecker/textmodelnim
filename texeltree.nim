@@ -1,25 +1,55 @@
-import options
 import styles
+import options
+import strutils
 
   
 const
   NMAX = 15
 
 type Texel* = ref object of RootObj
+type Single* = ref object of Texel
+  style*: Style
+  text*: string # XXX Sollte immutable sein!
+type Text* = ref object of Texel
+  style*: Style
+  text*: string # XXX Sollte immutable sein!
+type TexelWithChilds = ref object of Texel
+  childs: seq[Texel]
+  length: int
+  lineno: int
+type Container = ref object of TexelWithChilds
+type Group* = ref object of TexelWithChilds
+  depth: int
+type NewLine* = ref object of Single
+  parstyle: Style
+
+  
 method get_depth*(this: Texel): int {.base.} = 0
+method get_depth*(this: Group): int = this.depth
+
 method get_length*(this: Texel): int {.base.} = 0
+method get_length*(this: Single): int = 1
+method get_length*(this: Text): int = this.text.len
+method get_length*(this: TexelWithChilds): int = this.length
+
 method get_lineno*(this: Texel): int {.base.} = 0
+method get_lineno*(this: NewLine): int = 1
+method get_lineno*(this: Group): int = this.lineno
+
+method `$`*(this: Texel): string {.base.} = "Texel()"
+method `$`*(this: Single): string = "S[" & escape(this.text) & "]"
+method `$`*(this: Text): string = "T[" & escape(this.text) & "]"
+method `$`*(this: Group): string = 
+  var l = newSeq[string](0)
+  for child in this.childs:
+    l.add($child)
+  "G[" & l.join(", ") & "]"
+  
 proc copy*(this: Texel): Texel =
   var new: Texel
   deepCopy(new, this)
   return new
 
-
-
-type Single* = ref object of Texel
-  style*: Style
-  text*: string # XXX Sollte immutable sein!
-method get_length(this: Single): int = 1
 proc copy*(this: Single, style: Option[Style]): Single =
   var new: Single
   deepCopy(new, this)
@@ -27,11 +57,6 @@ proc copy*(this: Single, style: Option[Style]): Single =
     new.style = style.get()
   return new
   
-
-type Text* = ref object of Texel
-  style*: Style
-  text*: string # XXX Sollte immutable sein!
-method get_length(this: Text): int = this.text.len
 proc copy*(this: Text, style: Option[Style],
            text: Option[string]): Text =
   var new: Text
@@ -42,13 +67,6 @@ proc copy*(this: Text, style: Option[Style],
     new.text = text.get()
   return new
   
-
-type TexelWithChilds = ref object of Texel
-  childs: seq[Texel]
-  length: int
-  lineno: int
-
-
 proc sum_length(l: seq[Texel]): int =
   var r = 0
   for texel in l:
@@ -61,8 +79,6 @@ proc sum_lineno(l: seq[Texel]): int =
     r += texel.get_lineno()
   return r
 
-
-type Container = ref object of TexelWithChilds
 proc init*(texel: Container) =
   texel.length = sum_length(texel.childs)
   texel.lineno = sum_lineno(texel.childs)
@@ -76,8 +92,6 @@ proc copy*(this: Container, childs: Option[seq[Texel]]): Container =
   return new
   
   
-type Group* = ref object of TexelWithChilds
-  depth: int
 proc newGroup*(childs: seq[Texel]) : Group =
   var texel: Group 
   texel = Group()
@@ -90,12 +104,6 @@ proc newGroup*(childs: seq[Texel]) : Group =
   texel.depth = i
   return texel
   
-  
-
-type NewLine* = ref object of Single
-  parstyle: Style
-method get_lineno*(this: NewLine): int = 1
-
   
 let TAB* = Single(text: "\t", style: EMPTYSTYLE)
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
@@ -130,9 +138,19 @@ proc groups*(l: seq[Texel]) : seq[Group]=
 when isMainModule:
   import unittest  
   suite "testing texeltree.nim":
-    #echo "suite setup: run once before the tests"
-
-    test "essential truths":
-      # give up and stop if this fails
-      require(true)
+    var r : seq[Texel]
+    test "single constants":
+      check(NL.get_lineno() == 1)
+      check(TAB.get_lineno() == 0)
+      
+    r.add(NL)
+    r.add(TAB)
+    
+    test "creating a group":
+      var g = newGroup(r)
+      check($g == "G[S[\"\\x0A\"], S[\"\\x09\"]]")
+      check(g.length == 2)
+      check(g.get_length() == 2)
+      check(g.lineno == 1)
+      check(g.get_lineno() == 1)
 
