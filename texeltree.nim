@@ -138,6 +138,20 @@ proc groups*(l: seq[Texel]) : seq[Group]=
     r.add(newGroup(l[i+n..NMAX-1]))
   return r
 
+proc get_text(texel: Texel): string =
+  if texel of Text:
+    return Text(texel).text
+  if texel of Single:
+    return Single(texel).text     
+  if texel of TexelWithChilds:
+    var r = ""
+    for child in TexelWithChilds(texel).childs:
+      r.add(get_text(child))
+    return r
+  assert false
+    
+
+    
 when isMainModule:
   import unittest  
   suite "testing texeltree.nim":
@@ -145,15 +159,20 @@ when isMainModule:
     test "single constants":
       check(NL.get_lineno() == 1)
       check(TAB.get_lineno() == 0)
+      check($NL == "NL")
+      check($TAB == "TAB")
       
     r.add(NL)
     r.add(TAB)
     
+    var g = newGroup(r)
     test "creating a group":
-      var g = newGroup(r)
-      check($g == "G[S[\"\\x0A\"], S[\"\\x09\"]]")
+      check($g == "G[NL, TAB]")
       check(g.length == 2)
       check(g.get_length() == 2)
       check(g.lineno == 1)
       check(g.get_lineno() == 1)
 
+    test "get_text":
+      check(get_text(g) == "\x0A\x09")
+      
