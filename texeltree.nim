@@ -1,18 +1,20 @@
 import styles
 import options
 import strutils
-
+import strformat
+    
   
 const
   NMAX = 15
+  NMIN = int(NMAX / 2)
 
 type Texel* = ref object of RootObj
 type Single* = ref object of Texel
-  style*: Style
   text*: string # XXX Sollte immutable sein!
+  style*: Style
 type Text* = ref object of Texel
-  style*: Style
   text*: string # XXX Sollte immutable sein!
+  style*: Style
 type TexelWithChilds = ref object of Texel
   childs: seq[Texel]
   length: int
@@ -115,27 +117,39 @@ let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
   
 proc groups*(l: seq[Texel]) : seq[Group]=
   #"""Transform the list of texels *l* into a list of groups.
-  const
-    NMAXH = int(0.5*NMAX)
     
   var r : seq[Group]
   r = newSeq[Group](0) # empty array of Group-Elements
   var N = len(l)
-  if N == 0:
-     return r    
-  var n = int(0.75*NMAX)
+  if N < NMIN:
+    assert 1 == 0 # XX raise exception
+
+  const n = int(0.75*NMAX)
   var i = 0
-  while N > NMAXH+n:
+  var i2 = 0
+  # NOTIZ:
+  # - Einzelne Seq-Indices sind wie in Python: von 0 bis len(l)-1
+  # - Ranges entahlten aber die obere Grenze, anders als in Python
+  # - ie obere Grenze schließt man aus per [i1..<i2]
+  while N >= NMAX+n:
     N -= n
-    var i2 = i+n
-    r.add(newGroup(l[i..i2]))
-    i += n
-  if N <= NMAX:
-    r.add(newGroup(l[i..N]))
-  else:
-    n = NMAXH
-    r.add(newGroup(l[i..i+n-1]))
-    r.add(newGroup(l[i+n..NMAX-1]))
+    i2 = i+n
+    r.add(newGroup(l[i..<i2]))
+    i = i2
+  # Es ist jetzt NMIN < N < NMAX+0.75*NMAX
+
+  if N > NMAX:
+    # Halbieren
+    var e = int(N/2)
+    N -= e
+    i2 = i+e
+    r.add(newGroup(l[i..<i2]))
+    i = i2
+  # Es ist jetzt NMIN < N <= NMAX
+    
+  if N >= 0:
+    i2 = i+N
+    r.add(newGroup(l[i..<i2]))
   return r
 
 proc get_text(texel: Texel): string =
@@ -176,3 +190,14 @@ when isMainModule:
     test "get_text":
       check(get_text(g) == "\x0A\x09")
       
+    var e : seq[Texel]
+    for i in 1..20:
+      e.add(Text(text: $i))
+    echo $e
+    
+    test "groups()":
+      var h = groups(e)
+      check(len(h) == 2)
+      check(len(h[0].childs)+len(h[1].childs) == len(e))
+      echo $h
+    
