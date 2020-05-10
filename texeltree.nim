@@ -1,7 +1,6 @@
 import styles
 import options
 import strutils
-import strformat
     
   
 const
@@ -108,18 +107,26 @@ proc newGroup*(childs: seq[Texel]) : Group =
     i = max(i, child.get_depth()+1)
   texel.depth = i
   return texel
+
   
-  
+proc childs*(texel: Texel): seq[Texel] =
+  if texel of TexelWithChilds:
+    return TexelWithChilds(texel).childs
+
+proc length*(texel: Texel): int = texel.get_length()
+proc depth*(texel: Texel): int = texel.get_depth()
+proc lineno*(texel: Texel): int = texel.get_lineno()
+
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
 let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
   
   
-proc groups*(l: seq[Texel]) : seq[Group]=
+proc groups*(l: seq[Texel]) : seq[Texel]=
   #"""Transform the list of texels *l* into a list of groups.
     
-  var r : seq[Group]
-  r = newSeq[Group](0) # empty array of Group-Elements
+  var r : seq[Texel]
+  r = newSeq[Texel](0) # empty array of Group-Elements
   var N = len(l)
   if N < NMIN:
     assert 1 == 0 # XX raise exception
@@ -130,7 +137,7 @@ proc groups*(l: seq[Texel]) : seq[Group]=
   # NOTIZ:
   # - Einzelne Seq-Indices sind wie in Python: von 0 bis len(l)-1
   # - Ranges entahlten aber die obere Grenze, anders als in Python
-  # - ie obere Grenze schließt man aus per [i1..<i2]
+  # - Die obere Grenze schließt man aus per [i1..<i2]
   while N >= NMAX+n:
     N -= n
     i2 = i+n
@@ -152,14 +159,48 @@ proc groups*(l: seq[Texel]) : seq[Group]=
     r.add(newGroup(l[i..<i2]))
   return r
 
-proc get_text(texel: Texel): string =
+
+proc join*(l1, l2: seq[Texel]) : seq[Texel]=
+  # l1 = filter(length, l1) # strip off empty elements
+  # l2 = filter(length, l2) #
+  for texel in l1:
+    assert length(texel)>0
+  for texel in l2:
+    assert length(texel)>0
+    
+  if len(l1) == 0:
+    return l2
+  if len(l2) == 0:
+    return l1
+  let t1 = l1[^1]
+  let t2 = l2[0]
+  let d1 = depth(t1)
+  let d2 = depth(t2)
+  if d1 == d2:
+    return l1 & l2
+  elif d1 > d2:
+    let g1 = Group(t1)
+    return l1[0..^2] & groups(join(childs(t1), l2))
+  # d1 < d2
+  let g2 = Group(t2)
+  return groups(join(l1, childs(t2))) & l2[1..^1]
+
+  
+proc join*(l1, l2, l3: seq[Texel]) : seq[Texel]=
+  return join(join(l1, l2), l3)
+
+proc join*(l1, l2, l3, l4: seq[Texel]) : seq[Texel]=
+  return join(join(join(l1, l2), l3), l4)
+
+  
+proc get_text*(texel: Texel): string =
   if texel of Text:
     return Text(texel).text
   if texel of Single:
     return Single(texel).text     
   if texel of TexelWithChilds:
     var r = ""
-    for child in TexelWithChilds(texel).childs:
+    for child in childs(texel):
       r.add(get_text(child))
     return r
   assert false
@@ -198,6 +239,6 @@ when isMainModule:
     test "groups()":
       var h = groups(e)
       check(len(h) == 2)
-      check(len(h[0].childs)+len(h[1].childs) == len(e))
+      check(len(childs(h[0]))+len(childs(h[1])) == len(e))
       echo $h
     
