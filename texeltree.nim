@@ -25,7 +25,10 @@ type NewLine* = ref object of Single
   parstyle: Style
 type Tabulator* = ref object of Single
 
-  
+proc childs*(texel: Texel): seq[Texel] =
+  if texel of TexelWithChilds:
+    return TexelWithChilds(texel).childs
+
 method get_depth*(this: Texel): int {.base.} = 0
 method get_depth*(this: Group): int = this.depth
 
@@ -109,14 +112,18 @@ proc newGroup*(childs: seq[Texel]) : Group =
   return texel
 
   
-proc childs*(texel: Texel): seq[Texel] =
-  if texel of TexelWithChilds:
-    return TexelWithChilds(texel).childs
-
 proc length*(texel: Texel): int = texel.get_length()
 proc depth*(texel: Texel): int = texel.get_depth()
 proc lineno*(texel: Texel): int = texel.get_lineno()
 
+iterator iter_childs*(texel: Texel): tuple[i1: int, i2: int, child: Texel]=
+  var i1 = 0
+  for child in texel.childs:
+    let n = length(child)
+    var i2 = i1+n
+    yield (i1, i2, child)
+    i2 = i1
+  
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
 let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
@@ -191,6 +198,81 @@ proc join*(l1, l2, l3: seq[Texel]) : seq[Texel]=
 
 proc join*(l1, l2, l3, l4: seq[Texel]) : seq[Texel]=
   return join(join(join(l1, l2), l3), l4)
+
+proc fuse*(l1, l2: seq[Texel]) : seq[Texel]=
+  # XXX wrong!
+  return join(l1, l2)
+
+proc fuse*(l1, l2, l3: seq[Texel]) : seq[Texel]=
+  # XXX wrong!
+  return join(join(l1, l2), l3)
+  
+proc get_rightmost(texel: Texel): Texel =
+    if texel of TexelWithChilds:
+        return get_rightmost(childs(texel)[^1])
+    return texel
+
+proc get_leftmost(texel: Texel): Texel =
+    if texel of TexelWithChilds:
+        return get_leftmost(childs(texel)[^1])
+    return texel
+
+proc exchange_rightmost(texel, new: Texel):Texel =
+    if texel of TexelWithChilds:
+      let cl = childs(texel)
+      let l = exchange_rightmost(cl[^1], new)
+      return Group(childs: cl[0..^2] & @[l])
+    return new
+
+proc remove_leftmost(texel: Texel): seq[Texel] =
+  if length(texel) == 0 or depth(texel) == 0:
+    # XXX needed?
+    return @[]
+  let l = remove_leftmost(texel.childs[0])
+  return join(l, childs(texel)[1..^1])
+
+proc can_merge(texel1, texel2: Texel): bool =
+  if texel1 of Text and texel2 of Text and Text(texel1).style == Text(texel2).style:
+    return true
+  return false
+
+proc merge(texel1, texel2: Text): Text =
+    return Text(text: texel1.text & texel2.text, style: texel1.style)
+  
+proc insert*(texel: Texel, i: int, stuff: seq[Texel]) : seq[Texel]=
+    if not 0 <= i and i <= length(texel):
+      raise newException(IndexError, "index out of bounds: " & repr(i))
+    if texel of Group:
+        var k = -1
+        for i1, i2, child in iter_childs(texel):
+            k += 1
+            if i1 <= i and i <= i2:
+                let l = insert(child, i-i1, stuff)
+                let r1 = texel.childs[0..<k]
+                let r2 = texel.childs[k+1..^1]
+                return join(r1, l, r2)
+    # XXX fehlt noch:
+    #elif texel.is_container:
+    #    mutable = texel.get_mutability()
+    #    k = -1
+    #    for i1, i2, child in iter_childs(texel):
+    #        k += 1
+    #        if (i1 < i < i2) or ((i1 <= i <= i2) and mutable[k]):
+    #            l = insert(child, i-i1, stuff)
+    #            r1 = texel.childs[:k]
+    #            r2 = texel.childs[k+1:]
+    #            return [texel.set_childs(r1+[grouped(l)]+r2)]
+    #    if i == 0:
+    #        return join(stuff, [texel])
+    #    elif i == length(texel):
+    #        return join([texel], stuff)
+    #    assert False
+
+    if i==0:
+      return fuse(stuff, @[texel])
+    if i==length(texel):
+      return fuse(@[texel], stuff)
+    assert 1==0
 
   
 proc get_text*(texel: Texel): string =
