@@ -196,7 +196,7 @@ proc join*(l1, l2: seq[Texel]): seq[Texel] =
   for texel in l1:
     assert length(texel) > 0
   for texel in l2:
-    assert length(texel) > 0
+    assert get_length(texel) > 0
 
   if len(l1) == 0:
     return l2
@@ -234,12 +234,12 @@ proc get_leftmost(texel: Texel): Texel =
   return texel
 
 
-proc exchange_rightmost(texel, new: Texel): Texel =
+proc exchange_rightmost(texel, new: Texel): seq[Texel] =
   if texel of TexelWithChilds:
     let cl = texel.get_childs()
     let l = exchange_rightmost(cl[^1], new)
-    return Group(childs: cl[0..^2] & @[l])
-  return new
+    return @[Texel(newGroup(cl[0..^2] & l))]
+  return @[new]
 
 
 proc without_leftmost(texel: Texel): seq[Texel] =
@@ -257,10 +257,10 @@ proc can_merge(texel1, texel2: Texel): bool =
   return false
 
 
-proc merge(texel1, texel2: Texel): seq[Texel] =
+proc merge(texel1, texel2: Texel): Texel =
   let t1 = Text(texel1)
   let t2 = Text(texel2)
-  return @[Texel(Text(text: t1.text & t2.text, style: t1.style))]
+  return Text(text: t1.text & t2.text, style: t1.style)
 
 
 proc fuse*(l1, l2: seq[Texel]): seq[Texel] =
@@ -274,8 +274,11 @@ proc fuse*(l1, l2: seq[Texel]): seq[Texel] =
   let t2 = get_leftmost(l2[0])
   if not can_merge(t1, t2):
     return join(l1, l2)
-  return join(l1[0..^2], merge(t1, t2), without_leftmost(l2[0]),
-              l2[1..^1])
+  return join(
+    l1[0..^2],
+    exchange_rightmost(l1[^1], merge(t1, t2)),
+    without_leftmost(l2[0]),
+    l2[1..^1])
 
 proc fuse*(l1, l2, l3: seq[Texel]): seq[Texel] =
   ## Like join(...) but also merge the arguments if possible.
@@ -451,3 +454,13 @@ when isMainModule:
       assert s == @[2, -1, 4]
       assert r == @[0, 1, 2, 3, 4]
 
+    test "merge()":
+      var t1 = Text(text: "Hi ")
+      var t2 = Text(text: "Chris")
+      check(can_merge(t1, t2) == true)
+
+      var g1 = groups(@[TAB, t1])
+      var g2 = groups(@[Texel(t2)])
+      #let n = length(g1)+length(g2)
+      echo $join(g1, g2)
+      echo $fuse(g1, g2)
