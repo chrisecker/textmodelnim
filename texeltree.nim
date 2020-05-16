@@ -25,7 +25,7 @@ type NewLine* = ref object of Single
   parstyle: Style
 type Tabulator* = ref object of Single
 
-proc childs*(texel: Texel): seq[Texel] =
+proc get_childs*(texel: Texel): seq[Texel] =
   if texel of TexelWithChilds:
     return TexelWithChilds(texel).childs
 
@@ -119,7 +119,7 @@ proc lineno*(texel: Texel): int = texel.get_lineno()
 iterator iter_childs*(texel: Texel): tuple[i1: int, i2: int, child: Texel]=
   var i1 = 0
   var i2 = 0
-  for child in texel.childs:
+  for child in texel.get_childs():
     let n = length(child)
     i1 = i2
     i2 = i1+n
@@ -189,11 +189,11 @@ proc join*(l1, l2: seq[Texel]) : seq[Texel]=
   elif d1 > d2:
     let g1 = Group(t1)
     # XXX wäre join statt & nötig?? 
-    return l1[0..^2] & groups(join(childs(t1), l2))
+    return l1[0..^2] & groups(join(get_childs(t1), l2))
   # d1 < d2
   let g2 = Group(t2)
   # XXX wäre join statt & nötig?? 
-  return groups(join(l1, childs(t2))) & l2[1..^1]
+  return groups(join(l1, get_childs(t2))) & l2[1..^1]
 
   
 proc join*(l1, l2, l3: seq[Texel]) : seq[Texel]=
@@ -212,17 +212,17 @@ proc fuse*(l1, l2, l3: seq[Texel]) : seq[Texel]=
   
 proc get_rightmost(texel: Texel): Texel =
     if texel of TexelWithChilds:
-        return get_rightmost(childs(texel)[^1])
+        return get_rightmost(get_childs(texel)[^1])
     return texel
 
 proc get_leftmost(texel: Texel): Texel =
     if texel of TexelWithChilds:
-        return get_leftmost(childs(texel)[^1])
+        return get_leftmost(get_childs(texel)[^1])
     return texel
 
 proc exchange_rightmost(texel, new: Texel):Texel =
     if texel of TexelWithChilds:
-      let cl = childs(texel)
+      let cl = texel.get_childs()
       let l = exchange_rightmost(cl[^1], new)
       return Group(childs: cl[0..^2] & @[l])
     return new
@@ -231,8 +231,8 @@ proc remove_leftmost(texel: Texel): seq[Texel] =
   if length(texel) == 0 or depth(texel) == 0:
     # XXX needed?
     return @[]
-  let l = remove_leftmost(texel.childs[0])
-  return join(l, childs(texel)[1..^1])
+  let l = remove_leftmost(texel.get_childs()[0])
+  return join(l, texel.get_childs()[1..^1])
 
 proc can_merge(texel1, texel2: Texel): bool =
   if texel1 of Text and texel2 of Text and Text(texel1).style == Text(texel2).style:
@@ -263,13 +263,14 @@ proc insert*(texel: Texel, i: int, stuff: seq[Texel]) : seq[Texel]=
     if texel of Group:
         var k = -1
         #echo "\ninsert called"
+        let childs = texel.get_childs()
         for i1, i2, child in iter_childs(texel):
             #echo "i:", i, "[", i1, ", ", i2, "]"
             k += 1
             if i1 <= i and i <= i2:
                 let l = insert(child, i-i1, stuff)
-                let r1 = texel.childs[0..<k]
-                let r2 = texel.childs[k+1..^1]
+                let r1 = childs[0..<k]
+                let r2 = childs[k+1..^1]
                 return join(r1, l, r2)
         assert false
                 
@@ -317,7 +318,7 @@ proc get_text*(texel: Texel): string =
     return Single(texel).text     
   if texel of TexelWithChilds:
     var r = ""
-    for child in childs(texel):
+    for child in texel.get_childs():
       r.add(get_text(child))
     return r
   assert false
@@ -356,7 +357,7 @@ when isMainModule:
     test "groups()":
       var h = groups(e)
       check(len(h) == 2)
-      check(len(childs(h[0]))+len(childs(h[1])) == len(e))
+      check(len(get_childs(h[0]))+len(get_childs(h[1])) == len(e))
       #echo $h
     
     test "insert()":
