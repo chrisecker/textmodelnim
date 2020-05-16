@@ -118,11 +118,12 @@ proc lineno*(texel: Texel): int = texel.get_lineno()
 
 iterator iter_childs*(texel: Texel): tuple[i1: int, i2: int, child: Texel]=
   var i1 = 0
+  var i2 = 0
   for child in texel.childs:
     let n = length(child)
-    var i2 = i1+n
+    i1 = i2
+    i2 = i1+n
     yield (i1, i2, child)
-    i2 = i1
   
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
@@ -136,7 +137,7 @@ proc groups*(l: seq[Texel]) : seq[Texel]=
   r = newSeq[Texel](0) # empty array of Group-Elements
   var N = len(l)
   if N < NMIN:
-    assert 1 == 0 # XX raise exception
+    return @[Texel(newGroup(l))]
 
   const n = int(0.75*NMAX)
   var i = 0
@@ -187,9 +188,11 @@ proc join*(l1, l2: seq[Texel]) : seq[Texel]=
     return l1 & l2
   elif d1 > d2:
     let g1 = Group(t1)
+    # XXX wäre join statt & nötig?? 
     return l1[0..^2] & groups(join(childs(t1), l2))
   # d1 < d2
   let g2 = Group(t2)
+  # XXX wäre join statt & nötig?? 
   return groups(join(l1, childs(t2))) & l2[1..^1]
 
   
@@ -238,41 +241,73 @@ proc can_merge(texel1, texel2: Texel): bool =
 
 proc merge(texel1, texel2: Text): Text =
     return Text(text: texel1.text & texel2.text, style: texel1.style)
-  
+
+proc strip(root: Texel): Texel =
+    ## Removes unnecessary Group-elements from the root.
+    var root: Texel = root
+    while root of Group and len(Group(root).childs) == 1:
+        root = Group(root).childs[0]
+    return root
+    
+proc grouped(stuff: seq[Texel]): Texel=
+  ## Creates a single group from the list of texels *stuff*.
+  var l: seq[Texel] = stuff
+  while len(l) > NMAX:
+    l = groups(l)
+  return strip(newGroup(l))
+
 proc insert*(texel: Texel, i: int, stuff: seq[Texel]) : seq[Texel]=
-    if not 0 <= i and i <= length(texel):
+    if not (0 <= i and i <= length(texel)):
       raise newException(IndexError, "index out of bounds: " & repr(i))
+        
     if texel of Group:
         var k = -1
+        #echo "\ninsert called"
         for i1, i2, child in iter_childs(texel):
+            #echo "i:", i, "[", i1, ", ", i2, "]"
             k += 1
             if i1 <= i and i <= i2:
                 let l = insert(child, i-i1, stuff)
                 let r1 = texel.childs[0..<k]
                 let r2 = texel.childs[k+1..^1]
                 return join(r1, l, r2)
-    # XXX fehlt noch:
-    #elif texel.is_container:
-    #    mutable = texel.get_mutability()
-    #    k = -1
-    #    for i1, i2, child in iter_childs(texel):
-    #        k += 1
-    #        if (i1 < i < i2) or ((i1 <= i <= i2) and mutable[k]):
-    #            l = insert(child, i-i1, stuff)
-    #            r1 = texel.childs[:k]
-    #            r2 = texel.childs[k+1:]
-    #            return [texel.set_childs(r1+[grouped(l)]+r2)]
-    #    if i == 0:
-    #        return join(stuff, [texel])
-    #    elif i == length(texel):
-    #        return join([texel], stuff)
-    #    assert False
-
-    if i==0:
+        assert false
+                
+    elif i==0:
       return fuse(stuff, @[texel])
-    if i==length(texel):
+      
+    elif i==length(texel):
       return fuse(@[texel], stuff)
+
+    # An der Stelle muss texel ein Text oder ein Container sein. Grund:
+    # die anderen beiden Möglichkeiten sind schon vorher behandelt.
+    # - Group ganz am Anfang      
+    # - Single wird durch i == 0 oder i == length erwischt, da Single immer
+    #   length 1 hat
+      
+    elif texel of Text:
+        # So könnten alle Fälle behandelt werden. Da wir copy() noch
+        # nicht haben, gehe ich die Fälle einzeln durch.  return
+        # fuse(copy(texel, 0, i), stuff, copy(texel, i,
+        # length(texel)))
+        let t = Text(texel)
+        let t1:Texel = Text(text: t.text[0..<i], style: t.style)
+        let t2:Texel = Text(text: t.text[i..^1], style: t.style)
+        return fuse(@[t1], stuff, @[t2])
+
+    elif texel of Container:
+      let container = Container(texel)
+      var mutable: bool = true
+      var k: int = -1
+      for i1, i2, child in iter_childs(container):
+        k += 1
+        mutable = not mutable
+        if (i1 < i and i < i2) or ((i1 <= i and i <= i2) and mutable):
+          var n = container.childs[1..^1] # XXX das sollte eine Kopier erzeugen!??
+          n[k] = grouped(insert(child, i-i1, stuff))
+          return @[Texel(container.copy(childs=option(n)))]
     assert 1==0
+    
 
   
 proc get_text*(texel: Texel): string =
@@ -316,11 +351,50 @@ when isMainModule:
     var e : seq[Texel]
     for i in 1..20:
       e.add(Text(text: $i))
-    echo $e
+    #echo $e
     
     test "groups()":
       var h = groups(e)
       check(len(h) == 2)
       check(len(childs(h[0]))+len(childs(h[1])) == len(e))
-      echo $h
+      #echo $h
     
+    test "insert()":
+      var i: int = 1
+      assert 0 <= i
+      var b = not (0 <= i and i <= 2)
+      assert b == false
+      check(get_text(g) == "\n\t")
+      
+      var t = Text(text: "Chris")
+      check(get_text(grouped(g.insert(0, @[Texel(t)]))) == "Chris\n\t")
+      check(get_text(grouped(g.insert(1, @[Texel(t)]))) == "\nChris\t")
+      check(get_text(grouped(g.insert(2, @[Texel(t)]))) == "\n\tChris")
+      expect(IndexError):
+        discard g.insert(-1, @[Texel(t)])
+      expect(IndexError):
+        discard g.insert(3, @[Texel(t)])
+      
+      check(get_text(grouped(t.insert(0, @[Texel(g)]))) == "\n\tChris")
+      check(get_text(grouped(t.insert(1, @[Texel(g)]))) == "C\n\thris")
+      check(get_text(grouped(t.insert(2, @[Texel(g)]))) == "Ch\n\tris")
+      check(get_text(grouped(t.insert(3, @[Texel(g)]))) == "Chr\n\tis")
+      check(get_text(grouped(t.insert(4, @[Texel(g)]))) == "Chri\n\ts")
+      check(get_text(grouped(t.insert(5, @[Texel(g)]))) == "Chris\n\t")
+      expect(IndexError):
+        discard t.insert(6, @[Texel(g)])
+      expect(IndexError):
+        discard t.insert(-1, @[Texel(g)])
+
+      var h = grouped(t.insert(2, @[Texel(g)]))
+      echo h
+      let hh = h.insert(3, @[Texel(g)])
+      assert len(hh) == 1
+      assert depth(hh[0]) == 1
+      
+      # absichern, dass durch das Slicing eine Kopie erzeugt wird:
+      var r = @[0, 1, 2, 3, 4]
+      var s = r[2..^1]
+      s[1] = -1
+      assert s == @[2, -1, 4]
+      assert r == @[0, 1, 2, 3, 4]
