@@ -131,7 +131,9 @@ let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
   
   
 proc groups*(l: seq[Texel]) : seq[Texel]=
-  #"""Transform the list of texels *l* into a list of groups.
+  ## Transform the seq of texels `l` into a seq of groups.  If texel
+  ## have depth d, groups will have depth d+1. All returned groups are
+  ## efficient.
     
   var r : seq[Texel]
   r = newSeq[Texel](0) # empty array of Group-Elements
@@ -169,6 +171,9 @@ proc groups*(l: seq[Texel]) : seq[Texel]=
 
 
 proc join*(l1, l2: seq[Texel]) : seq[Texel]=
+  ## Join several homogeneous sequences of texels. The returned list
+  ## is homogeneous.
+  
   # l1 = filter(length, l1) # strip off empty elements
   # l2 = filter(length, l2) #
   for texel in l1:
@@ -207,6 +212,9 @@ proc fuse*(l1, l2: seq[Texel]) : seq[Texel]=
   return join(l1, l2)
 
 proc fuse*(l1, l2, l3: seq[Texel]) : seq[Texel]=
+  ## Like join(...) but also merge the arguments if possible.
+  ## The returned list is homogeneous.
+
   # XXX wrong!
   return join(join(l1, l2), l3)
   
@@ -257,57 +265,63 @@ proc grouped(stuff: seq[Texel]): Texel=
   return strip(newGroup(l))
 
 proc insert*(texel: Texel, i: int, stuff: seq[Texel]) : seq[Texel]=
-    if not (0 <= i and i <= length(texel)):
-      raise newException(IndexError, "index out of bounds: " & repr(i))
+  ## Inserts the seq `stuff` at position `i`.
+  ##
+  ## `Texel` must be root-efficient, `stuff` must be
+  ## list-efficient. Note that insert can increase the texels
+  ## depth. The returned list is always list efficient.
+
+  if not (0 <= i and i <= length(texel)):
+    raise newException(IndexError, "index out of bounds: " & repr(i))
         
-    if texel of Group:
-        var k = -1
-        #echo "\ninsert called"
-        let childs = texel.get_childs()
-        for i1, i2, child in iter_childs(texel):
-            #echo "i:", i, "[", i1, ", ", i2, "]"
-            k += 1
-            if i1 <= i and i <= i2:
-                let l = insert(child, i-i1, stuff)
-                let r1 = childs[0..<k]
-                let r2 = childs[k+1..^1]
-                return join(r1, l, r2)
-        assert false
+  if texel of Group:
+    var k = -1
+    #echo "\ninsert called"
+    let childs = texel.get_childs()
+    for i1, i2, child in iter_childs(texel):
+      #echo "i:", i, "[", i1, ", ", i2, "]"
+      k += 1
+      if i1 <= i and i <= i2:
+        let l = insert(child, i-i1, stuff)
+        let r1 = childs[0..<k]
+        let r2 = childs[k+1..^1]
+        return join(r1, l, r2)
+    assert false
                 
-    elif i==0:
-      return fuse(stuff, @[texel])
+  elif i==0:
+    return fuse(stuff, @[texel])
       
-    elif i==length(texel):
-      return fuse(@[texel], stuff)
+  elif i==length(texel):
+    return fuse(@[texel], stuff)
 
-    # An der Stelle muss texel ein Text oder ein Container sein. Grund:
-    # die anderen beiden Möglichkeiten sind schon vorher behandelt.
-    # - Group ganz am Anfang      
-    # - Single wird durch i == 0 oder i == length erwischt, da Single immer
-    #   length 1 hat
+  # An der Stelle muss texel ein Text oder ein Container sein. Grund:
+  # die anderen beiden Möglichkeiten sind schon vorher behandelt.
+  # - Group ganz am Anfang      
+  # - Single wird durch i == 0 oder i == length erwischt, da Single immer
+  #   length 1 hat
       
-    elif texel of Text:
-        # So könnten alle Fälle behandelt werden. Da wir copy() noch
-        # nicht haben, gehe ich die Fälle einzeln durch.  return
-        # fuse(copy(texel, 0, i), stuff, copy(texel, i,
-        # length(texel)))
-        let t = Text(texel)
-        let t1:Texel = Text(text: t.text[0..<i], style: t.style)
-        let t2:Texel = Text(text: t.text[i..^1], style: t.style)
-        return fuse(@[t1], stuff, @[t2])
+  elif texel of Text:
+    # So könnten alle Fälle behandelt werden. Da wir copy() noch
+    # nicht haben, gehe ich die Fälle einzeln durch.  return
+    # fuse(copy(texel, 0, i), stuff, copy(texel, i,
+    # length(texel)))
+    let t = Text(texel)
+    let t1:Texel = Text(text: t.text[0..<i], style: t.style)
+    let t2:Texel = Text(text: t.text[i..^1], style: t.style)
+    return fuse(@[t1], stuff, @[t2])
 
-    elif texel of Container:
-      let container = Container(texel)
-      var mutable: bool = true
-      var k: int = -1
-      for i1, i2, child in iter_childs(container):
-        k += 1
-        mutable = not mutable
-        if (i1 < i and i < i2) or ((i1 <= i and i <= i2) and mutable):
-          var n = container.childs[1..^1] # XXX das sollte eine Kopier erzeugen!??
-          n[k] = grouped(insert(child, i-i1, stuff))
-          return @[Texel(container.copy(childs=option(n)))]
-    assert 1==0
+  elif texel of Container:
+    let container = Container(texel)
+    var mutable: bool = true
+    var k: int = -1
+    for i1, i2, child in iter_childs(container):
+      k += 1
+      mutable = not mutable
+      if (i1 < i and i < i2) or ((i1 <= i and i <= i2) and mutable):
+        var n = container.childs[1..^1] # XXX das sollte eine Kopier erzeugen!??
+        n[k] = grouped(insert(child, i-i1, stuff))
+        return @[Texel(container.copy(childs=option(n)))]
+  assert 1==0
     
 
   
