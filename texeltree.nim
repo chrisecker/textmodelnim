@@ -37,7 +37,7 @@ proc get_childs*(texel: Texel): seq[Texel] =
   if texel of TexelWithChilds:
     return TexelWithChilds(texel).childs
 
-
+    
 method get_depth*(this: Texel): int {.base.} = 0
 method get_depth*(this: Group): int = this.depth
 
@@ -142,6 +142,26 @@ iterator iter_childs*(texel: Texel): tuple[i1: int, i2: int, child: Texel] =
     yield (i1, i2, child)
 
 
+proc left(t: string, n: int): string =
+  if len(t) <= n:
+    return t
+  return t[0..<n] & "..."
+  
+
+proc dump*(texel: Texel, i, n: int=0) =
+  ## Dump a texel
+  echo ' '.repeat(2*n), i, "..", i+length(texel), " ", left($texel, 20)
+  for i1, i2, child in iter_childs(texel):
+    dump(child, i1, n+1)
+
+proc dump*(l: seq[Texel]) =
+  ## Dump a seq of texels
+  var i = 0
+  for texel in l:
+    echo "item ", i, ":"
+    dump(texel)
+
+    
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
 let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
@@ -235,6 +255,7 @@ proc get_leftmost(texel: Texel): Texel =
 
 
 proc exchange_rightmost(texel, new: Texel): seq[Texel] =
+  assert not (new of Group)
   if texel of TexelWithChilds:
     let cl = texel.get_childs()
     let l = exchange_rightmost(cl[^1], new)
@@ -356,7 +377,7 @@ proc insert*(texel: Texel, i: int, stuff: seq[Texel]): seq[Texel] =
       k += 1
       mutable = not mutable
       if (i1 < i and i < i2) or ((i1 <= i and i <= i2) and mutable):
-        var n = container.childs[1..^1] # XXX das sollte eine Kopier erzeugen!??
+        var n = container.childs[0..^1]
         n[k] = grouped(insert(child, i-i1, stuff))
         return @[Texel(container.copy(childs = option(n)))]
   assert 1 == 0
@@ -377,6 +398,13 @@ proc get_text*(texel: Texel): string =
   assert false
 
 
+proc get_text(l: seq[Texel]): string =
+  var r = ""
+  for texel in l:
+    r.add(get_text(texel))
+  return r
+
+  
 when isMainModule:
   import unittest
   suite "testing texeltree.nim":
@@ -454,6 +482,12 @@ when isMainModule:
       assert s == @[2, -1, 4]
       assert r == @[0, 1, 2, 3, 4]
 
+      # auch bei einem vollständigen Slice
+      s = r[0..^1]
+      s[1] = -1
+      assert r == @[0, 1, 2, 3, 4]
+      
+
     test "merge()":
       var t1 = Text(text: "Hi ")
       var t2 = Text(text: "Chris")
@@ -461,6 +495,7 @@ when isMainModule:
 
       var g1 = groups(@[TAB, t1])
       var g2 = groups(@[Texel(t2)])
-      #let n = length(g1)+length(g2)
-      echo $join(g1, g2)
-      echo $fuse(g1, g2)
+      check(get_text(join(g1, g2)) == "\tHi Chris")
+      check(get_text(fuse(g1, g2)) == "\tHi Chris")
+
+      dump(join(g1, g2))
