@@ -5,8 +5,8 @@ import strutils
   
 type
   Style* = ref object
-    fontsize: Option[int]
-    textcolor: Option[string]
+    fontsize*: Option[int]
+    textcolor*: Option[string]
           
 proc `or`[T](self: Option[T], other: Option[T]): Option[T] =
   if self.isNone:
