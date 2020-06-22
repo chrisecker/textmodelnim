@@ -162,6 +162,12 @@ proc dump*(l: seq[Texel]) =
     echo "item ", i, ":"
     dump(texel)
 
+proc length(l: seq[Texel]): int =
+  var i = 0
+  for texel in l:
+    i += length(texel)
+  return i
+  
 proc homogeneous(l: seq[Texel]): bool =
   var i = -1
   for texel in l:
@@ -405,6 +411,8 @@ proc grouped(stuff: seq[Texel]): Texel =
 
 
 proc insert(x: string, i: int, item: string) : string =
+  ## For debugging: insert string `item` into string `x` at position
+  ## `i`.
   var r: string = x
   insert(r, item, i)
   return r
@@ -426,6 +434,9 @@ proc insert*(texel: Texel, i: int, stuff: seq[Texel]): seq[Texel] =
      
   if not (0 <= i and i <= length(texel)):
     raise newException(IndexError, "index out of bounds: " & repr(i))
+
+  if length(texel) == 0: return stuff
+  if length(stuff) == 0: return @[texel]
 
   if texel of Group:
     var k = -1
@@ -579,8 +590,7 @@ when isMainModule:
       dump(join(g1, g2))
 
     test "random insert":
-      # XXX leere Texel funktionieren noch nicht!
-      var t: Texel = Text(text: "XX")
+      var t: Texel = Text(text: "")
       var n: Texel
       var j: int
       let red = Style(textcolor: option("red"))
@@ -590,8 +600,11 @@ when isMainModule:
         let style = sample(@[red, black])
         n = Text(text: ":" & $i, style: style)
         j = rand(0..length(t))
-        echo "inserting ", $n, " at ", j, " in ", $t 
+        echo "inserting ", $n, " at ", j, " in ", $t
+        let s_before = get_text(t)
+        let s_after = insert(s_before, j, get_text(n))
         t = grouped(insert(t, j, @[n]))
+        check(get_text(t) == s_after)
       dump(t)
 
 
