@@ -153,7 +153,7 @@ proc dump*(texel: Texel, i, n: int=0) =
   ## Dump a texel
   echo ' '.repeat(2*n), i, "..", i+length(texel), " ", left($texel, 20)
   for i1, i2, child in iter_childs(texel):
-    dump(child, i1, n+1)
+    dump(child, i+i1, n+1)
 
 proc dump*(l: seq[Texel]) =
   ## Dump a seq of texels
@@ -596,11 +596,11 @@ when isMainModule:
       let red = Style(textcolor: option("red"))
       let black = Style(textcolor: option("black"))
 
-      for i in 0..20:
+      for i in 0..2000:
         let style = sample(@[red, black])
         n = Text(text: ":" & $i, style: style)
         j = rand(0..length(t))
-        echo "inserting ", $n, " at ", j, " in ", $t
+        #echo "inserting ", $n, " at ", j, " in ", $t
         let s_before = get_text(t)
         let s_after = insert(s_before, j, get_text(n))
         t = grouped(insert(t, j, @[n]))
