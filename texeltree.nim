@@ -402,6 +402,20 @@ proc strip(root: Texel): Texel =
   return root
 
 
+proc strip2list(texel: Texel): seq[Texel] =
+    ## Returns a list of texels which is list efficient. 
+    ##   pre:
+    ##       is_root_efficient(texel)
+    ##   post:
+    ##       is_list_efficient(__return__)
+  
+    # XXX TODO: implement pre / post conditions 
+    if texel of Group:
+      return Group(texel).childs
+    return @[texel]
+
+    
+  
 proc grouped(stuff: seq[Texel]): Texel =
   ## Creates a single group from the list of texels *stuff*.
   var l: seq[Texel] = stuff
@@ -488,6 +502,104 @@ proc insert*(texel: Texel, i: int, stuff: seq[Texel]): seq[Texel] =
   assert 1 == 0
 
 
+proc takeout*(texel: Texel, i1, i2: int): (seq[Texel], seq[Texel]) =
+  ## Takes out all content between *i1* and *i2*.
+  ##
+  ## Returns the outer rest and the inner cut out piece (kernel), i.e.
+  ## G([a, b, c]).takeout(i1, i2) will return G([a, c]), b.
+  ##
+  ## *Texel* must be root efficient. Kernel and rest are guaranteed to
+  ## be list efficient. Depths can change.
+  
+  if not (0 <= i1 and i1 <= i2 and i2 <= length(texel)):
+    raise newException(IndexError, "index out of bounds: [" & repr(i1) &
+                       ", " % repr(i2) % "]")
+
+  # 1. empty texel
+  if length(texel) == 0: 
+    return (@[], @[])
+
+  # 2. empty interval
+  if i1 == i2:           
+    return (strip2list(texel), @[])
+
+  # 3. fully contained
+  if i1 <= 0 and i2 >= length(texel): 
+    return (@[], strip2list(texel))
+
+  # Note that singles always fall under case 2 or 3. Beyond this
+  # point we only have G, C or T.
+
+  if texel of Group:
+    # outer rest
+    var r1: seq[Texel] = @[]
+    var r2: seq[Texel] = @[]
+    var r3: seq[Texel] = @[]
+    var r4: seq[Texel] = @[]
+    # inner kernel
+    var k1: seq[Texel] = @[]
+    var k2: seq[Texel] = @[]
+    var k3: seq[Texel] = @[]
+    
+    for j1, j2, child in iter_childs(texel):
+      if j2 <= i1:
+        r1.add(child)
+      elif j1 <= i1 and i1 <= j2:
+        let (r, k) = takeout(child, max(i1-j1, 0), min(i2-j1, length(child)))
+        r2 = r2 & r
+        k1 = k1 & k
+      elif j2 <= i2: 
+        k2.add(child)
+      elif j1 < i2:
+        let (r, k) = takeout(child, max(i1-j1, 0), min(i2-j1, length(child)))
+        r3 = r3 & r
+        k3 = k3 & k
+      else:
+        r4.add(child)
+    # Note that we are returning a list of elements which have
+    # been in the content before. So even if texel is only root
+    # efficient, the elements muss be element efficient.  Each of
+    # the list r1, r2, r3, r4 and k1, k2, k3 is
+    # homogeneous. Therefore join gives us list efficient return
+    # values.
+
+    #if not is_clean(r2):
+    #  dump_list(r2)
+    #if not is_clean(r3):
+    #  dump_list(r3)
+
+    return (join(r1, fuse(r2, r3), r4), join(k1, k2, k3))
+        
+  elif texel of Container:
+      var l = get_childs(texel) # this always creates a new list! ???
+      var k = -1
+      for j1, j2, child in iter_childs(texel):
+        k += 1
+        if  i1 < j2 and j1 < i2: # test of overlap
+          if not (j1 <= i1 and i2 <= j2):
+            raise newException(IndexError, $((i1, i2)))
+          let (rest, kernel) = takeout(
+            child, max(0, i1-j1), min(i2-j1, length(texel)))
+          l[k] = grouped(rest)
+          # XXX Typen stimmen noch nicht
+          let new = Container(texel).copy(childs=option(l))
+          return (@[Texel(new)], kernel)
+      raise newException(IndexError, $((i1, i2)))
+
+  elif texel of Text:
+    let text = Text(texel).text
+    let r1 = text[0..<i1]
+    let r2 = text[i1..^1] # Das letzte Eleemtn sollte enthalten sein! Stimmt das?
+    let r3 = text[i1..<i2]
+    let s = Text(texel).style
+    let new1 = Text(text:r1 & r2, style:s)
+    let new2 = Text(text:r3, style:s)
+    return (@[Texel(new1)], @[Texel(new2)])
+
+  assert false
+
+
+  
 when isMainModule:
   import unittest
   suite "testing texeltree.nim":
@@ -596,7 +708,7 @@ when isMainModule:
       let red = Style(textcolor: option("red"))
       let black = Style(textcolor: option("black"))
 
-      for i in 0..2000:
+      for i in 0..500:
         let style = sample(@[red, black])
         n = Text(text: ":" & $i, style: style)
         j = rand(0..length(t))
@@ -606,6 +718,16 @@ when isMainModule:
         t = grouped(insert(t, j, @[n]))
         check(get_text(t) == s_after)
       dump(t)
+
+      test "takeout":
+          # Für einen großen Baum A zufällige Stücke herauskopieren,
+          # Vergleich von Rest und Kern mit dem einfachen
+          # Stringoperationen. Mehrfach durchführen, dabei immer
+          # wieder zum selben Baum A zurückkehren. Alternativ könnte
+          # man alle möglichen Stücke herausschneiden!
+          var i: int
+          i = length(t)
+          
 
 
       
