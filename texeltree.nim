@@ -628,7 +628,7 @@ proc takeout*(texel: Texel, i1, i2: int): (seq[Texel], seq[Texel]) =
   elif texel of Text:
     let text = Text(texel).text
     let r1 = text[0..<i1]
-    let r2 = text[i1..^1] # Das letzte Eleemtn sollte enthalten sein! Stimmt das?
+    let r2 = text[i2..^1] # Das letzte Element sollte enthalten sein! Stimmt das?
     let r3 = text[i1..<i2]
     let s = Text(texel).style
     let new1 = Text(text:r1 & r2, style:s)
@@ -737,8 +737,7 @@ when isMainModule:
       var g2 = groups(@[Texel(t2)])
       check(get_text(join(g1, g2)) == "\tHi Chris")
       check(get_text(fuse(g1, g2)) == "\tHi Chris")
-
-      dump(join(g1, g2))
+      #dump(join(g1, g2))
 
     test "random insert":
       var t: Texel = Text(text: "")
@@ -756,7 +755,7 @@ when isMainModule:
         let s_after = insert(s_before, j, get_text(n))
         t = grouped(insert(t, j, @[n]))
         check(get_text(t) == s_after)
-      dump(t)
+      #dump(t)
 
       test "takeout":
           # Für einen großen Baum A zufällige Stücke herauskopieren,
@@ -764,9 +763,46 @@ when isMainModule:
           # Stringoperationen. Mehrfach durchführen, dabei immer
           # wieder zum selben Baum A zurückkehren. Alternativ könnte
           # man alle möglichen Stücke herausschneiden!
-          var i: int
-          i = length(t)
+
+          var t: Texel
+          let red = Style(textcolor: option("red"))
+          let black = Style(textcolor: option("black"))
+          var text = ""
+          
+          t = Text(text:"012345", style:red)
+          #dump(t)
+          check(get_text(grouped(takeout(t, 0, 2)[0])) == "2345")
+          check(get_text(grouped(takeout(t, 2, 4)[0])) == "0145")
+
+          t = grouped(@[Texel(Text(text:"012345", style:red)), Text(text:"6789", style:black)])
+          # Das Text ist nötig, damit die Sequenz den richtigen Typ hat!
+          
+          #dump(t)
+          check(get_text(t) == "0123456789")
+          check(get_text(grouped(takeout(t, 0, 2)[0])) == "23456789")
+          check(get_text(grouped(takeout(t, 2, 4)[0])) == "01456789")
+
+          t = grouped(@[Texel(Text(text:"012345", style:red)), Text(text:"6789", style:black)])
+          text = get_text(t)
+                      
+          for i1 in 0..length(t):
+            for i2 in i1..length(t):
+              var n = get_text(grouped(takeout(t, i1, i2)[0]))
+              check(n == text[0..<i1] & text[i2..high(text)]) 
           
 
+          # Create a large random tree
+          for i in 0..50:
+            var x = Text(text: ":" & $i, style: sample(@[red, black]))
+            j = rand(0..length(t))
+            t = grouped(insert(t, j, @[Texel(x)]))
+          text = get_text(t)
 
+          # Cut out pieces
+          var r, k : seq[Texel]
+          for i1 in 0..length(t):
+            for i2 in i1..length(t):
+              (r, k) = takeout(t, i1, i2)
+              check(get_text(grouped(r)) == text[0..<i1] & text[i2..high(text)]) 
+              check(get_text(grouped(k)) == text[i1..<i2])
       
