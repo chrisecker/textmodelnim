@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+
+
 import styles
 import options
 import strutils
@@ -144,6 +147,7 @@ iterator iter_childs*(texel: Texel): tuple[i1: int, i2: int, child: Texel] =
 
 
 proc left(t: string, n: int): string =
+  ## Helper 
   if len(t) <= n:
     return t
   return t[0..<n] & "..."
@@ -177,21 +181,41 @@ proc homogeneous(l: seq[Texel]): bool =
       if i != depth(texel):
         return false
   return true
-     
+
+proc root_efficient(texel: Texel): bool
+# forward declaration
+
 proc efficient(texel: Texel): bool =
+  ## Computes if `texel` is efficient.
+  ##
+  ## In general a texel is called *efficient* if it forms an optimized
+  ## tree structure. The exact rules depend on the type of texel:
+  ##
+  ## - A Group is efficient if it has between NMIN and NMAX childs and
+  ##   each child is efficient.
+  ## - A Container is efficient if all childs are root_efficient.
+  ## - A texel without childs (Single, Text) is always efficient.
+  
   if not (texel of TexelWithChilds):
     return true
   let childs = texel.get_childs()
-  if len(childs) < NMIN:
-    return false
-  if len(childs) > NMAX:
-    return false
-  for child in childs:
-    if not efficient(child):
-       return false
+  if texel of Group:    
+    if len(childs) < NMIN:
+      return false
+    elif len(childs) > NMAX:
+      return false
+    for child in childs:
+      if not efficient(child):
+        return false
+  elif texel of Container:    
+    for child in childs:
+      if not root_efficient(child):
+        return false
   return true
 
 proc efficient(l: seq[Texel]): bool =
+  ## A list of texels is efficient if all texels have the same depth
+  ## and each texel is efficient.
   if not homogeneous(l):
     return false
   for texel in l:
@@ -200,15 +224,31 @@ proc efficient(l: seq[Texel]): bool =
   return true
 
   
-proc efficient_root(texel: Texel): bool =
-  for child in texel.get_childs():
-    if not efficient(child):
-       return false
+proc root_efficient(texel: Texel): bool =
+  ## Determines whether `texel` is *root_efficient*
+  ##
+  ## A root node must be able to have less than NMIN childs. Therefore
+  ## root needs a modified definition of efficiency: A root Group-node
+  ## is *root_efficient* if it has NMAX or less childs and all childs
+  ## are fully efficient. A container-node is root_efficient if all
+  ## childs are root_efficient.
+
+  let childs = texel.get_childs()
+  if texel of Group:    
+    if len(childs) > NMAX:
+      return false
+    for child in childs:
+      if not efficient(child):
+        return false
+  elif texel of Container:    
+    for child in childs:
+      if not root_efficient(child):
+        return false
   return true
 
   
 proc get_text*(texel: Texel): string =
-  ## Get the content of `texel`as a text string which has the same length.
+  ## Get the content of `texel` as a text string which has the same length.
   if texel of Text:
     return Text(texel).text
   if texel of Single:
@@ -251,6 +291,7 @@ proc groups*(l: seq[Texel]): seq[Texel] =
   const n = int(0.75*NMAX)
   var i = 0
   var i2 = 0
+  # XXXX REMOVE THIS!
   # NOTIZ:
   # - Einzelne Seq-Indices sind wie in Python: von 0 bis len(l)-1
   # - Ranges entahlten aber die obere Grenze, anders als in Python
@@ -358,15 +399,13 @@ proc can_merge(texel1, texel2: Texel): bool =
   return false
 
 
-proc merge(texel1, texel2: Texel): Texel =
-  let t1 = Text(texel1)
-  let t2 = Text(texel2)
-  return Text(text: t1.text & t2.text, style: t1.style)
+proc merge(text1, text2: Text): Texel =
+  return Text(text: text1.text & text2.text, style: text1.style)
 
 
 proc fuse*(l1, l2: seq[Texel]): seq[Texel] =
   ## Like join(...) but also merge the arguments if possible.  The
-  ## returned list is homogeneous. It is even efficient if l1 and l2
+  ## returned list is homogeneous. It is also efficient if l1 and l2
   ## both are efficient.
   
   preconditions homogeneous(l1), homogeneous(l2)
@@ -384,7 +423,7 @@ proc fuse*(l1, l2: seq[Texel]): seq[Texel] =
     return join(l1, l2)
   return join(
     l1[0..^2],
-    exchange_rightmost(l1[^1], merge(t1, t2)),
+    exchange_rightmost(l1[^1], merge(Text(t1), Text(t2))),
     without_leftmost(l2[0]),
     l2[1..^1])
 
@@ -442,12 +481,12 @@ proc insert*(texel: Texel, i: int, stuff: seq[Texel]): seq[Texel] =
   postconditions true,
      homogeneous(result),
      insert(get_text(texel), i, get_text(stuff)) == get_text(result),
-     efficient(stuff)==false or efficient_root(texel)==false or
+     efficient(stuff)==false or root_efficient(texel)==false or
        efficient(result)==true
 
      
   if not (0 <= i and i <= length(texel)):
-    raise newException(IndexError, "index out of bounds: " & repr(i))
+    raise newException(IndexDefect, "index out of bounds: " & repr(i))
 
   if length(texel) == 0: return stuff
   if length(stuff) == 0: return @[texel]
@@ -512,7 +551,7 @@ proc takeout*(texel: Texel, i1, i2: int): (seq[Texel], seq[Texel]) =
   ## be list efficient. Depths can change.
   
   if not (0 <= i1 and i1 <= i2 and i2 <= length(texel)):
-    raise newException(IndexError, "index out of bounds: [" & repr(i1) &
+    raise newException(IndexDefect, "index out of bounds: [" & repr(i1) &
                        ", " % repr(i2) % "]")
 
   # 1. empty texel
@@ -577,14 +616,14 @@ proc takeout*(texel: Texel, i1, i2: int): (seq[Texel], seq[Texel]) =
         k += 1
         if  i1 < j2 and j1 < i2: # test of overlap
           if not (j1 <= i1 and i2 <= j2):
-            raise newException(IndexError, $((i1, i2)))
+            raise newException(IndexDefect, $((i1, i2)))
           let (rest, kernel) = takeout(
             child, max(0, i1-j1), min(i2-j1, length(texel)))
           l[k] = grouped(rest)
           # XXX Typen stimmen noch nicht
           let new = Container(texel).copy(childs=option(l))
           return (@[Texel(new)], kernel)
-      raise newException(IndexError, $((i1, i2)))
+      raise newException(IndexDefect, $((i1, i2)))
 
   elif texel of Text:
     let text = Text(texel).text
@@ -651,10 +690,10 @@ when isMainModule:
       check(get_text(grouped(g.insert(2, @[Texel(t)]))) == "\n\tChris")
 
       # not compatible with contract checks!
-      #expect(IndexError):
+      #expect(IndexDefect):
       #  discard g.insert(-1, @[Texel(t)])
 
-      expect(IndexError):
+      expect(IndexDefect):
         discard g.insert(3, @[Texel(t)])
 
       check(get_text(grouped(t.insert(0, @[Texel(g)]))) == "\n\tChris")
@@ -663,11 +702,11 @@ when isMainModule:
       check(get_text(grouped(t.insert(3, @[Texel(g)]))) == "Chr\n\tis")
       check(get_text(grouped(t.insert(4, @[Texel(g)]))) == "Chri\n\ts")
       check(get_text(grouped(t.insert(5, @[Texel(g)]))) == "Chris\n\t")
-      expect(IndexError):
+      expect(IndexDefect):
         discard t.insert(6, @[Texel(g)])
 
       # not compatible with contract checks
-      #expect(IndexError):
+      #expect(IndexDefect):
       #  discard t.insert(-1, @[Texel(g)])
 
       var h = grouped(t.insert(2, @[Texel(g)]))
