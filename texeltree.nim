@@ -34,7 +34,10 @@ type Group* = ref object of TexelWithChilds
 type NewLine* = ref object of Single
   parstyle: Style
 
+type EndMark* = ref object of NewLine
+  
 type Tabulator* = ref object of Single
+
 
 
 proc get_childs*(texel: Texel): seq[Texel] =
@@ -67,6 +70,7 @@ method `$`*(this: Group): string =
   return "G[" & l.join(", ") & "]"
 method `$`*(this: NewLine): string = "NL"
 method `$`*(this: Tabulator): string = "TAB"
+method `$`*(this: EndMark): string = "ENDMARK"
 
 
 proc copy*(this: Single, style: Option[Style]): Single =
@@ -271,6 +275,7 @@ proc get_text(l: seq[Texel]): string =
   
 let SPACE* = Single(text: " ", style: EMPTYSTYLE)
 let NL* = NewLine(text: "\n", style: EMPTYSTYLE)
+let END* = EndMark(text: "\n", style: EMPTYSTYLE)
 let TAB* = Tabulator(text: "\t", style: EMPTYSTYLE)
 
 
@@ -738,7 +743,7 @@ when isMainModule:
       check(get_text(join(g1, g2)) == "\tHi Chris")
       check(get_text(fuse(g1, g2)) == "\tHi Chris")
       #dump(join(g1, g2))
-
+  
     test "random insert":
       var t: Texel = Text(text: "")
       var n: Texel
